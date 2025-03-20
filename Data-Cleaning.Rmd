@@ -1,0 +1,158 @@
+---
+title: "AR Food Insecurity Data Cleaning"
+author: "Leah Bragg"
+date: "3/25/2024"
+---
+
+```{r}
+#This line makes your figures smaller (you want to do this!)
+knitr::opts_chunk$set(fig.width=5, fig.height=3)
+
+# You often want to load libraries at the start of your file
+# Uncomment the line below to load the dplyr library cleanly
+suppressWarnings(suppressMessages(library(dplyr)))
+library(readxl) 
+library(tidyverse)
+library(stringr)
+library(tigris)
+```
+
+### Data
+Food Access Research Atlas by the USDA Economic Research Service
+
+April 2021, Food Access Research Atlas. Economic Research Service USDA. https://www.ers.usda.gov/data-products/food-access-research-atlas/
+```{r}
+# read_excel("FoodAccessResearchAtlasData2019.xlsx",
+#             "Food Access Research Atlas",
+#             na = "NULL") |> filter(State == "Arkansas") |>
+#    write_csv("arkansas-atlas2019.csv")
+# 
+# read_excel("FoodAccessResearchAtlasData2015.xlsx",
+#            "Food Access Research Atlas",
+#            na = "NULL") |> filter(State == "Arkansas") |>
+#   write_csv("arkansas-atlas2015.csv")
+# 
+# read_excel("FoodAccessResearchAtlasData2010.xlsx",
+#            "Food Access Research Atlas",
+#            na = "NULL") |> filter(State == "AR") |>
+#   write_csv("arkansas-atlas2010.csv")
+
+data2010 <- read_csv("arkansas-atlas2010.csv", 
+                     show_col_types = FALSE)
+data2015 <- read_csv("arkansas-atlas2015.csv", 
+                     show_col_types = FALSE)
+data2019 <- read_csv("arkansas-atlas2019.csv", 
+                     show_col_types = FALSE)
+```
+
+```{r}
+
+data2010 <- data2010 |> mutate(year = 2010, NAME = County)
+data2015 <- data2015 |> mutate(year = 2015, NAME = County)
+data2019 <- data2019 |> mutate(year = 2019, NAME = County)
+
+data_ALL <- bind_rows(data2010, data2015, data2019) |> 
+  mutate(year = as.factor(year))
+
+data_ALL |>
+  ggplot(aes(y = lakids10share, x = year)) +
+  geom_boxplot()
+
+head(data_ALL)
+```
+
+```{r}
+options(tigris_use_cache = TRUE)
+tigris_cache_dir("")
+ar_map2010 <- tigris::counties(state = "Arkansas", year = 2010) |>
+  mutate(NAME = NAME10)
+ar_map2015 <- tigris::counties(state = "Arkansas", year = 2015)
+ar_map2019 <- tigris::counties(state = "Arkansas", year = 2019)
+
+ar_map2010 <- ar_map2010 |> mutate(year = 2010)
+ar_map2015 <- ar_map2015 |> mutate(year = 2015)
+ar_map2015 <- ar_map2019 |> mutate(year = 2019)
+ar_map_ALL <- bind_rows(ar_map2010, ar_map2015,
+                        ar_map2019) |>
+  mutate(year = as.factor(year))
+
+joined10 <- left_join(ar_map2010, joined10)
+joined10 |> ggplot(aes(fill = lakids10share)) +
+  geom_sf()
+
+joined_ALL <- left_join(ar_map_ALL, data_ALL)
+joined_ALL |> ggplot(aes(fill = lakids10share)) +
+  facet_wrap(vars(year)) +
+  geom_sf()
+
+
+
+```
+
+```{r}
+#total lakidshalf, lakids1, lakids10, lakids20, 
+data2019 |> group_by() |>
+  summarize(lakidshalf = sum(lakidshalf, na.rm = TRUE),
+            lakids1 = sum(lakids1, na.rm = TRUE),
+            lakids10 = sum(lakids10, na.rm = TRUE),
+            lakids20 = sum(lakids20, na.rm = TRUE))
+data2010 |> group_by() |>
+  summarize(lakidshalf = sum(lakidshalf, na.rm = TRUE),
+            lakids1 = sum(lakids1, na.rm = TRUE),
+            lakids10 = sum(lakids10, na.rm = TRUE),
+            lakids20 = sum(lakids20, na.rm = TRUE))
+
+#overall average lakidshalf, lakids1, lakids10, lakids20
+data |> group_by() |>
+  summarize(lakidshalf = mean(lakidshalf, na.rm = TRUE),
+            lakids1 = mean(lakids1, na.rm = TRUE),
+            lakids10 = mean(lakids10, na.rm = TRUE),
+            lakids20 = mean(lakids20, na.rm = TRUE))
+
+#average by county lakidshalf, lakids1, lakids10, lakids20
+data |> group_by(County) |>
+  summarize(lakidshalf = mean(lakidshalf, na.rm = TRUE),
+            lakids1 = mean(lakids1, na.rm = TRUE),
+            lakids10 = mean(lakids10, na.rm = TRUE),
+            lakids20 = mean(lakids20, na.rm = TRUE))
+
+kidsVsLowIncome <- data |> 
+  pivot_longer(starts_with("lakids"), 
+               values_drop_na = TRUE,
+               names_to = "lakidsnum", values_to = "numKids") |>
+  pivot_longer(starts_with("lalowi"), 
+               values_drop_na = TRUE,
+               names_to = "lalowinum", values_to = "numLowInc") |>
+  select(lakidsnum, numKids, lalowinum, numLowInc, County) |>
+  filter((lakidsnum == "lakidshalf" & lalowinum == "lalowihalf") |
+           (lakidsnum == "lakids1" & lalowinum == "lalowi1") |
+           (lakidsnum == "lakids10" & lalowinum == "lalowi10") |
+           (lakidsnum == "lakids20" & lalowinum == "lalowi20"))
+
+kidsVsLowIncome |> ggplot(aes(x = numKids, y = numLowInc,
+                              color = lakidsnum)) +
+  geom_point()
+
+kidsVsLowIncome |> ggplot(aes(x = numKids, y = numLowInc,
+                              color = lakidsnum)) + 
+  geom_point() + facet_wrap(vars(lakidsnum))
+
+options(tigris_use_cache=TRUE)
+tigris_cache_dir("Foundations of Statistics/Honors Project/")
+ar_map <- tigris::counties(state = "Arkansas")
+
+mutated_data <- data |> mutate(NAMELSAD = County)
+left_join(ar_map, mutated_data) |> ggplot(aes(fill = lakids1)) +
+  geom_sf()
+
+mutated_kidsVsLowIncome <- kidsVsLowIncome |> mutate(NAMELSAD = County)
+left_join(ar_map, mutated_kidsVsLowIncome) |> 
+  ggplot(aes(fill = numKids)) +
+  facet_wrap(vars(lakidsnum)) +
+  geom_sf()
+
+left_join(ar_map, mutated_kidsVsLowIncome) |> 
+  ggplot(aes(fill = numLowInc)) +
+  facet_wrap(vars(lalowinum)) +
+  geom_sf()
+```

@@ -1,0 +1,290 @@
+---
+title: "Deliverable"
+author: "Leah Bragg"
+---
+
+```{r, results='hide'}
+knitr::opts_chunk$set(fig.width=5, fig.height=3)
+
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(readxl)))
+suppressWarnings(suppressMessages(library(tidyverse)))
+suppressWarnings(suppressMessages(library(stringr)))
+suppressWarnings(suppressMessages(library(tigris)))
+```
+
+## Data
+```{r}
+# read_excel("FoodAccessResearchAtlasData2019.xlsx",
+#             "Food Access Research Atlas",
+#             na = "NULL") |> filter(State == "Arkansas") |>
+#    write_csv("arkansas-atlas2019.csv")
+# 
+# read_excel("FoodAccessResearchAtlasData2010.xlsx",
+#            "Food Access Research Atlas",
+#            na = "NULL") |> filter(State == "AR") |>
+#   write_csv("arkansas-atlas2010.csv")
+
+data2010 <- read_csv("arkansas-atlas2010.csv", 
+                     show_col_types = FALSE) |>
+  mutate(year = 2010, NAME = County)
+
+data2019 <- read_csv("arkansas-atlas2019.csv", 
+                     show_col_types = FALSE) |>
+  mutate(year = 2019, NAME = word(County , 1  , -2))
+
+```
+
+## Statistical Test
+
+H0: The mean number of people living 10 miles away from food (by county) has remained constant from 2010 to 2019.
+
+Ha: The mean number of people living 10 miles away from food (by county) has shifted from 2010 to 2019.
+
+```{r}
+mutated_2010 <- data2010 |>
+  mutate(num2010 = lapop10) |>
+  select(NAME, num2010) |> group_by(NAME) |>
+  summarize(num2010 = sum(num2010, na.rm = TRUE))
+
+mutated_2019 <- data2019 |>
+  mutate(num2019 = lapop10) |>
+  select(NAME, num2019) |> group_by(NAME) |>
+  summarize(num2019 = sum(num2019, na.rm = TRUE))
+
+num2010_19 <- left_join(mutated_2010,
+                                mutated_2019,
+                                by = "NAME")
+```
+
+```{r}
+t.test(num2010_19$num2010,
+       num2010_19$num2019, paired = TRUE)
+```
+
+p-value = 0.1744, does not reject H0 at 0.05 level
+
+```{r}
+t.test(sqrt(num2010_19$num2010),
+       sqrt(num2010_19$num2019), paired = TRUE)
+```
+
+p-value = 0.09216, does not reject H0 at 0.05 level
+
+```{r}
+wilcox.test(num2010_19$num2010,
+       num2010_19$num2019, paired = TRUE)
+```
+
+p-value = 0.2296, does not reject H0 at 0.05 level
+
+
+### lapop10 histograms/density plots
+```{r}
+for_hist2010 <- data2010 |>
+  select(NAME, lapop10, year) |> group_by(NAME) |>
+  summarize(lapop10 = sum(lapop10, na.rm = TRUE), 
+            year = mean(year), .groups = "drop")
+
+for_hist2019 <- data2019 |>
+  select(NAME, lapop10, year) |> group_by(NAME) |>
+  summarize(lapop10 = sum(lapop10, na.rm = TRUE), 
+            year = mean(year), .groups = "drop")
+
+hist_2010_19 <- bind_rows(for_hist2010, for_hist2019)
+
+hist_2010_19 |> mutate(year = factor(year)) |>
+  ggplot(aes(x = lapop10, color = year)) +
+  geom_density(linewidth = 1) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("Population living 10 miles from food")
+
+hist_2010_19 |> mutate(year = factor(year)) |>
+  ggplot(aes(x = sqrt(lapop10), color = year)) +
+  geom_density(linewidth = 1) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("Square root of Population living 10 miles from food")
+
+num2010_19 |> ggplot(aes(x = num2019 - num2010)) +
+  geom_histogram(fill = "deepskyblue4") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  xlab("Difference from 2010 to 2019")
+```
+### lalowi10 histograms/density plots
+```{r}
+for_hist2010 <- data2010 |>
+  select(NAME, lalowi10, year) |> group_by(NAME) |>
+  summarize(lalowi10 = sum(lalowi10, na.rm = TRUE), 
+            year = mean(year), .groups = "drop")
+
+for_hist2019 <- data2019 |>
+  select(NAME, lalowi10, year) |> group_by(NAME) |>
+  summarize(lalowi10 = sum(lalowi10, na.rm = TRUE), 
+            year = mean(year), .groups = "drop")
+
+hist_2010_19 <- bind_rows(for_hist2010, for_hist2019)
+
+hist_2010_19 |> mutate(year = factor(year)) |>
+  ggplot(aes(x = lalowi10, color = year)) +
+  geom_density(linewidth = 1) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("Low income population living 10 miles from food")
+
+hist_2010_19 |> mutate(year = factor(year)) |>
+  ggplot(aes(x = sqrt(lalowi10), color = year)) +
+  geom_density(linewidth = 1) +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  xlab("square root of low income population living 10 miles from food")
+
+```
+
+## Maps
+
+```{r, results='hide'}
+ar_map2010 <- tigris::counties(state = "Arkansas", 
+                               year = 2010) |>
+  mutate(NAME = NAME10, year = 2010)
+ar_map2019 <- tigris::counties(state = "Arkansas", 
+                               year = 2019) |>
+  mutate(year = 2019)
+ar_map2010_19 <- bind_rows(ar_map2010, ar_map2019)
+```
+
+### lapop10 maps
+```{r}
+dataForMap_2010 <- data2010 |> select(NAME, 
+                                 lapop10)|>
+  group_by(NAME) |> 
+  summarize(value = sum(lapop10, na.rm = TRUE)) |>
+  mutate(year = 2010)
+
+dataForMap_2019 <- data2019 |> select(NAME, 
+                                 lapop10, year) |>
+  group_by(NAME) |> 
+  summarize(value = sum(lapop10, na.rm = TRUE)) |>
+  mutate(year = 2019)
+
+dataForMap <- bind_rows(dataForMap_2010,
+                        dataForMap_2019)
+
+d <- left_join(ar_map2010_19, 
+               dataForMap, 
+               by = c("NAME" = "NAME", "year" = "year"))
+d |> 
+  ggplot(aes(fill = value)) +
+  facet_wrap(vars(year)) +
+  geom_sf() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank()) 
+
+```
+
+### lalowi10 maps
+```{r}
+dataForMap_2010 <- data2010 |> select(NAME, 
+                                 lalowi10)|>
+  group_by(NAME) |> 
+  summarize(value = sum(lalowi10, na.rm = TRUE)) |>
+  mutate(year = 2010)
+
+dataForMap_2019 <- data2019 |> select(NAME, 
+                                 lalowi10, year) |>
+  group_by(NAME) |> 
+  summarize(value = sum(lalowi10, na.rm = TRUE)) |>
+  mutate(year = 2019)
+
+dataForMap <- bind_rows(dataForMap_2010,
+                        dataForMap_2019)
+
+d <- left_join(ar_map2010_19, 
+               dataForMap, 
+               by = c("NAME" = "NAME", "year" = "year"))
+d |> 
+  ggplot(aes(fill = value)) +
+  facet_wrap(vars(year)) +
+  geom_sf() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank()) 
+
+```
+
+### lalowi10 maps
+```{r}
+dataForMap_2010 <- data2010 |> select(NAME, 
+                                 LowIncomeTracts)|>
+  group_by(NAME) |> 
+  summarize(value = sum(LowIncomeTracts, na.rm = TRUE)) |>
+  mutate(year = 2010)
+
+dataForMap_2019 <- data2019 |> select(NAME, 
+                                 LowIncomeTracts, year) |>
+  group_by(NAME) |> 
+  summarize(value = sum(LowIncomeTracts, na.rm = TRUE)) |>
+  mutate(year = 2019)
+
+dataForMap <- bind_rows(dataForMap_2010,
+                        dataForMap_2019)
+
+d <- left_join(ar_map2010_19, 
+               dataForMap, 
+               by = c("NAME" = "NAME", "year" = "year"))
+d |> 
+  ggplot(aes(fill = value)) +
+  facet_wrap(vars(year)) +
+  geom_sf() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank()) 
+
+```
+
+### 2019 TractLOWI
+```{r}
+dataForMap_2019 <- data2019 |> select(NAME, 
+                                 TractLOWI, year) |>
+  group_by(NAME) |> 
+  summarize(value = sum(TractLOWI, na.rm = TRUE)) |>
+  mutate(year = 2019)
+
+
+
+d <- left_join(ar_map2019, 
+               dataForMap_2019, 
+               by = c("NAME" = "NAME", "year" = "year"))
+d |> 
+  ggplot(aes(fill = value)) +
+  facet_wrap(vars(year)) +
+  geom_sf() +
+  theme_void() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank()) 
+
+```
+
+## Top 10 worst lapop10
+```{r}
+mutated_2010 |> slice_max(num2010, n = 10)
+mutated_2019 |> slice_max(num2019, n = 10)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
